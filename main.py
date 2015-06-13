@@ -2,6 +2,7 @@
 from imgurpython import ImgurClient
 
 import os
+import argparse
 
 # Google search imports
 from bs4 import BeautifulSoup
@@ -12,19 +13,27 @@ import requests
 # Tagging imports
 from PIL import Image, ImageDraw, ImageFont
 
+# Twitterbot imports
+cwd = os.path.dirname(os.path.abspath(__file__))
+import sys
+sys.path.append(cwd + os.path.sep + os.path.pardir + os.path.sep + 'twitterbot')
+import tb
+os.chdir(cwd)
+
+# Constants
+
 CLIENT_ID = '42313947f8da0dd'
 with file('client_secret') as f:
   CLIENT_SECRET = f.read()
+LEFT_PADDING = 2
+RIGHT_PADDING = 10
+BOTTOM_PADDING = 20
 
+# Set up ImgurClient
 client = ImgurClient(CLIENT_ID, CLIENT_SECRET)
 
-# Tasks
-#
-# DONE Can pick a random word/phrase
-# DONE Given a search string, download that image from Google
-# DONE Given an image, tag it with "FUCK YEAH <noun>"
-# DONE Given a tagged image, upload to imgur
-# Given a url, tweet it
+# Set up Twitter Client
+TB = tb.Twitterbot()
 
 def downloadImageForText(text):
   
@@ -91,12 +100,12 @@ def tagImage(text, path):
   image = Image.open(path)
   draw = ImageDraw.Draw(image)
 
-  size = determineFontSize(draw, 'FUCK YEAH', image.size[0])
-  addOutlinedText((0, 0), draw, 'FUCK YEAH', size)
+  size = determineFontSize(draw, 'FUCK YEAH', image.size[0] - RIGHT_PADDING)
+  addOutlinedText((LEFT_PADDING, 0), draw, 'FUCK YEAH', size)
 
-  size = determineFontSize(draw, text, image.size[0])
+  size = determineFontSize(draw, text, image.size[0] - RIGHT_PADDING)
   textHeight = draw.textsize(text, buildFont(size))[1]
-  addOutlinedText((0,image.size[1] - textHeight - 20), draw, text, size)
+  addOutlinedText((LEFT_PADDING,image.size[1] - textHeight - BOTTOM_PADDING), draw, text, size)
 
   updatedPath = path[:-4] + '_tagged' + path[-4:]
   image.save(updatedPath)
@@ -105,19 +114,54 @@ def tagImage(text, path):
 def uploadImageToImgur(path):
   return client.upload_from_path(path)['link']
 
-def go(text):
+def postText(text, prefix=None):
   text = text.upper()
-  path = downloadImageForText(text)
   try:
+    path = downloadImageForText(text)
     updatedPath = tagImage(text, path)
-    try:
-      url = uploadImageToImgur(updatedPath)
-      print url
-    finally:
-      os.remove(updatedPath)
+    url = uploadImageToImgur(updatedPath)
+    tweetText = ('fuck yeah ' + text).upper() + ' ' + url + '.jpg'
+    if prefix:
+      tweetText = prefix + ' ' + tweetText
+    TB.api.PostUpdate(tweetText)
   finally:
-    os.remove(path)
+    try:
+      os.remove(path)
+    except Exception as e:
+      pass
+    try:
+      os.remove(updatedPath)
+    except Exception as e:
+      pass
 
 if __name__ == '__main__':
-  text = requests.post('http://watchout4snakes.com/wo4snakes/Random/RandomPhrase', {'Pos1':'a','Level1':'35','Pos2':'n','Level2':'35'}).text.upper()
-  go(text)
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--post', action='store_true', default=False)
+  args = parser.parse_args()
+
+  if args.post:
+    config = random_choice([{'Pos1':'n','Level1':'35'}]*9 + [{'Pos1':'a','Level1':'35','Pos2':'n','Level2':'35'}])
+    text = requests.post('http://watchout4snakes.com/wo4snakes/Random/RandomPhrase', config).text.upper()
+    postText(text)
+  else:
+    with file('latestUpdate','r') as f:
+      try:
+        latestUpdate = int(f.read())
+      except Exception:
+        latestUpdate = 1
+
+    mentions = TB.api.GetMentions(since_id=latestUpdate)
+
+    with file('latestUpdate','w') as f:
+      try:
+        f.write(str(max(mentions, key=lambda x: x.id).id))
+      except ValueError: #mentions is empty
+        pass
+
+    for mention in mentions:
+      screen_name = mention.user.screen_name
+      text = mention.text.replace('@FYeahNouns ','')
+      if len(text) > 30:
+        TB.api.PostUpdate('@' + screen_name + ' Can\'t handle that text, sorry!')
+      else:
+        postText(text, '@' + screen_name)
