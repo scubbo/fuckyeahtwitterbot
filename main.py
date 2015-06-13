@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from imgurpython import ImgurClient
 
 import os
@@ -19,6 +20,7 @@ client = ImgurClient(CLIENT_ID, CLIENT_SECRET)
 
 # Tasks
 #
+# DONE Can pick a random word/phrase
 # DONE Given a search string, download that image from Google
 # DONE Given an image, tag it with "FUCK YEAH <noun>"
 # DONE Given a tagged image, upload to imgur
@@ -106,10 +108,16 @@ def uploadImageToImgur(path):
 def go(text):
   text = text.upper()
   path = downloadImageForText(text)
-  updatedPath = tagImage(text, path)
-  url = uploadImageToImgur(updatedPath)
+  try:
+    updatedPath = tagImage(text, path)
+    try:
+      url = uploadImageToImgur(updatedPath)
+      print url
+    finally:
+      os.remove(updatedPath)
+  finally:
+    os.remove(path)
 
-  os.remove(path)
-  os.remove(updatedPath)
-
-  print url
+if __name__ == '__main__':
+  text = requests.post('http://watchout4snakes.com/wo4snakes/Random/RandomPhrase', {'Pos1':'a','Level1':'35','Pos2':'n','Level2':'35'}).text.upper()
+  go(text)
