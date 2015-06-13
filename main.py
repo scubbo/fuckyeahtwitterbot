@@ -1,10 +1,15 @@
 from imgurpython import ImgurClient
 
+import os
+
 # Google search imports
 from bs4 import BeautifulSoup
 from urlparse import urlparse, parse_qs
 from random import choice as random_choice, randint
 import requests
+
+# Tagging imports
+from PIL import Image, ImageDraw, ImageFont
 
 CLIENT_ID = '42313947f8da0dd'
 with file('client_secret') as f:
@@ -15,7 +20,7 @@ client = ImgurClient(CLIENT_ID, CLIENT_SECRET)
 # Tasks
 #
 # DONE Given a search string, download that image from Google
-# Given an image, tag it with "FUCK YEAH <noun>"
+# DONE Given an image, tag it with "FUCK YEAH <noun>"
 # DONE Given a tagged image, upload to imgur
 # Given a url, tweet it
 
@@ -58,5 +63,53 @@ def downloadImageForText(text):
   downloadImageToPath(imageLink, TEMPFILENAME)
   return TEMPFILENAME
 
+def tagImage(text, path):
+
+  def buildFont(size):
+    return ImageFont.truetype('/Library/fonts/Arial Rounded Bold.ttf', size)
+
+  def addOutlinedText(coords, draw, text, size):
+    font = buildFont(size)
+    draw.text((coords[0], coords[1] + 1), text, (0,0,0), font=font)
+    draw.text((coords[0] + 1, coords[1]), text, (0,0,0), font=font)
+    draw.text((coords[0], coords[1] - 1), text, (0,0,0), font=font)
+    draw.text((coords[0] - 1, coords[1]), text, (0,0,0), font=font)
+    draw.text(coords, text, (255,255,255), font=font)
+
+  def determineFontSize(draw, text, limit):
+    firstEstimate = (200 * limit) / (133 * len(text))
+
+    size = firstEstimate
+    while (draw.textsize(text, buildFont(size))[0] > limit):
+      size -= 10
+    while (draw.textsize(text, buildFont(size))[0] < limit):
+      size += 2
+    return size
+
+  image = Image.open(path)
+  draw = ImageDraw.Draw(image)
+
+  size = determineFontSize(draw, 'FUCK YEAH', image.size[0])
+  addOutlinedText((0, 0), draw, 'FUCK YEAH', size)
+
+  size = determineFontSize(draw, text, image.size[0])
+  textHeight = draw.textsize(text, buildFont(size))[1]
+  addOutlinedText((0,image.size[1] - textHeight - 20), draw, text, size)
+
+  updatedPath = path[:-4] + '_tagged' + path[-4:]
+  image.save(updatedPath)
+  return updatedPath
+
 def uploadImageToImgur(path):
   return client.upload_from_path(path)['link']
+
+def go(text):
+  text = text.upper()
+  path = downloadImageForText(text)
+  updatedPath = tagImage(text, path)
+  url = uploadImageToImgur(updatedPath)
+
+  os.remove(path)
+  os.remove(updatedPath)
+
+  print url
